@@ -39,10 +39,19 @@ class Event < RailsEventStore::Event
   end
 end
 
-class PolicyBound < Event
-  attribute :key1 do
+
+module PolicyAdministration
+  # Type representing attributes that are stable
+  # for the duration of a policy term.
+  class InsuranceAttributes < Dry::Struct
+    transform_keys(&:to_sym)
+
     attribute? :required_inspections, Types::RequiredInspections.default({ types: [], self_inspection: false })
   end
+end
+
+class PolicyBound < Event
+  attribute :key1, PolicyAdministration::InsuranceAttributes
 end
 
 setup_event_store = lambda do
@@ -76,9 +85,7 @@ setup_event_store = lambda do
     PolicyBound.new(
       event_id: "d2acf188-be88-44ee-b10d-22a33b1999d7",
       data: {
-        key1: {
-          required_inspections: Types::RequiredInspections[types: ["foo"]]
-        }
+        key1: PolicyAdministration::InsuranceAttributes.new
       }
     )
   event_store =
