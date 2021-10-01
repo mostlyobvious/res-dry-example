@@ -19,14 +19,31 @@ module Types
   RequiredInspections = Types::Nominal::Hash
 end
 
-module PolicyAdministration
-  class InsuranceAttributes < Dry::Struct
+# https://github.com/RailsEventStore/ecommerce/blob/ddb9ef939a877289b31b19b4c085f298139a0b02/infra/lib/infra/event.rb
+class Event < RailsEventStore::Event
+  class Schema < Dry::Struct
     transform_keys(&:to_sym)
-    attribute? :required_inspections, Types::RequiredInspections.default({ types: [], self_inspection: false })
+  end
+
+  class << self
+    extend Forwardable
+    def_delegators :schema, :attribute, :attribute?
+
+    def schema
+      @schema ||= Class.new(Schema)
+    end
+  end
+
+  def initialize(event_id: SecureRandom.uuid, metadata: nil, data: {})
+    super(event_id: event_id, metadata: metadata, data: data.deep_merge(self.class.schema.new(data).to_h))
   end
 end
 
-PolicyBound = Class.new(RailsEventStore::Event)
+class PolicyBound < Event
+  attribute :key1 do
+    attribute? :required_inspections, Types::RequiredInspections.default({ types: [], self_inspection: false })
+  end
+end
 
 setup_event_store = lambda do
   ActiveRecord::Base.establish_connection("sqlite3::memory:")
@@ -58,7 +75,11 @@ setup_event_store = lambda do
   policy_bound =
     PolicyBound.new(
       event_id: "d2acf188-be88-44ee-b10d-22a33b1999d7",
-      data: { key1: PolicyAdministration::InsuranceAttributes.new }
+      data: {
+        key1: {
+          required_inspections: Types::RequiredInspections[types: ["foo"]]
+        }
+      }
     )
   event_store =
     RailsEventStore::Client.new
@@ -67,6 +88,8 @@ setup_event_store = lambda do
   published_event =
     event_store.read.last
   raise unless policy_bound == published_event
+
+  p policy_bound
 
   event_store
 end
